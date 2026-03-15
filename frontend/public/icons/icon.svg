@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#000000"/>
+  <!-- Shirt icon -->
+  <path d="M160 140 L100 200 L150 220 L150 380 L362 380 L362 220 L412 200 L352 140 C340 170 300 186 256 186 C212 186 172 170 160 140Z" fill="white" stroke="white" stroke-width="4" stroke-linejoin="round"/>
+</svg>

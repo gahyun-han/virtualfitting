@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-rgb: 0, 0, 0;
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Safe-area bottom padding utility */
+.pb-safe {
+  padding-bottom: max(1rem, var(--safe-area-inset-bottom));
+}
+
+.mb-safe {
+  margin-bottom: max(0px, var(--safe-area-inset-bottom));
+}
+
+/* Bottom nav safe area */
+.bottom-nav-height {
+  height: calc(4rem + var(--safe-area-inset-bottom));
+}
+
+/* Hide scrollbar but keep scrollability */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Prevent pull-to-refresh on iOS for full-screen PWA */
+body.pwa-standalone {
+  overscroll-behavior-y: contain;
+}
+
+/* Category filter pill active state */
+@layer components {
+  .filter-pill {
+    @apply flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors duration-150;
+  }
+  .filter-pill-active {
+    @apply bg-white text-black;
+  }
+  .filter-pill-inactive {
+    @apply bg-zinc-800 text-zinc-300 hover:bg-zinc-700;
+  }
+}
+
+/* Clothing card swipe gesture */
+.card-swipe-container {
+  touch-action: pan-y;
+}
+
+/* Camera overlay */
+.camera-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 2rem;
+}
+
+/* Progress bar animation */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+/* Spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.25s ease-out;
+}
+
+/* Image skeleton */
+.skeleton {
+  @apply bg-zinc-800 animate-pulse rounded-lg;
+}

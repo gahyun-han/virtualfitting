@@ -1,0 +1,24 @@
+{
+  "name": "Virtual Fitting Room",
+  "short_name": "FitRoom",
+  "description": "AI-powered virtual clothing try-on",
+  "start_url": "/wardrobe",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "share_target": {
+    "action": "/upload",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [{"name": "clothing_image", "accept": ["image/*"]}]
+    }
+  },
+  "categories": ["lifestyle", "shopping"]
+}
