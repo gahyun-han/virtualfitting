@@ -164,6 +164,7 @@ async def _run_upload_pipeline(
         # Stage 6 – Save to DB                                                #
         # ------------------------------------------------------------------ #
         _update_job(job_id, "saving", 90, "Saving to wardrobe…")
+        clip_data = clip_attrs.model_dump()
         row = {
             "id": item_id,
             "user_id": user.id,
@@ -172,7 +173,8 @@ async def _run_upload_pipeline(
             "original_url": original_url,
             "segmented_url": segmented_url,
             "thumbnail_url": thumbnail_url,
-            "clip_attributes": clip_attrs.model_dump(),
+            "attributes": {k: v for k, v in clip_data.items() if k != "confidence"},
+            "clip_confidence": clip_data.get("confidence", 0.0),
         }
         db.table(_TABLE).insert(row).execute()
 
@@ -209,7 +211,7 @@ async def _run_upload_pipeline(
 
 @router.post("/clothing", status_code=202)
 async def upload_clothing(
-    clothing_image: UploadFile,
+    file: UploadFile,
     current_user: UserContext = Depends(get_current_user),
 ) -> Dict[str, str]:
     """Accept a clothing image, validate it, and start the async pipeline.
@@ -220,7 +222,7 @@ async def upload_clothing(
     settings = get_settings()
 
     # ---- Content-type validation ----------------------------------------
-    content_type = clothing_image.content_type or ""
+    content_type = file.content_type or ""
     if content_type not in _ALLOWED_CONTENT_TYPES:
         raise ValidationError(
             f"Unsupported file type '{content_type}'. "
@@ -228,7 +230,7 @@ async def upload_clothing(
         )
 
     # ---- Size validation -------------------------------------------------
-    file_bytes = await clothing_image.read()
+    file_bytes = await file.read()
     if len(file_bytes) > settings.max_file_size_bytes:
         raise ValidationError(
             f"File size {len(file_bytes) / 1_048_576:.1f} MB exceeds the "
@@ -243,7 +245,7 @@ async def upload_clothing(
         _run_upload_pipeline(
             job_id=job_id,
             file_bytes=file_bytes,
-            original_filename=clothing_image.filename or "upload",
+            original_filename=file.filename or "upload",
             user=current_user,
         )
     )
@@ -251,9 +253,10 @@ async def upload_clothing(
     return {"job_id": job_id, "status": "queued"}
 
 
-@router.get("/clothing/{job_id}/status")
+@router.get("/clothing/stream/{job_id}")
 async def upload_status_stream(
     job_id: str,
+    token: str | None = None,
     current_user: UserContext = Depends(get_current_user),
 ) -> EventSourceResponse:
     """SSE stream of pipeline progress events for *job_id*."""

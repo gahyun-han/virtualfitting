@@ -27,9 +27,9 @@ class TryOnJobResponse(BaseModel):
 
     id: UUID
     user_id: str
-    wardrobe_item_id: UUID
+    wardrobe_item_id: Optional[UUID] = None
     status: TryOnStatus
-    replicate_prediction_id: Optional[str] = None
+    replicate_job_id: Optional[str] = None
 
     # Storage references
     person_image_url: Optional[str] = None
@@ -38,4 +38,4 @@ class TryOnJobResponse(BaseModel):
     error_message: Optional[str] = None
 
     created_at: datetime
-    updated_at: datetime
+    completed_at: Optional[datetime] = None

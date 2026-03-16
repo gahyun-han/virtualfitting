@@ -124,11 +124,60 @@ async def _poll_replicate(job_id: str, prediction_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# HuggingFace background job
+# ---------------------------------------------------------------------------
+
+
+async def _run_hf_job(
+    job_id: str,
+    person_bytes: bytes,
+    clothing_url: str,
+    garment_desc: str,
+    user_id: str,
+) -> None:
+    """Run IDM-VTON via HuggingFace Space and persist the result."""
+    db = _get_db()
+    storage = get_storage_service()
+
+    try:
+        _update_event(job_id, TryOnStatus.processing, "Running virtual try-on (1~2 minutes)…")
+        db.table(_TABLE).update({"status": TryOnStatus.processing.value}).eq("id", job_id).execute()
+
+        result_bytes = await run_tryon(
+            person_image_bytes=person_bytes,
+            clothing_image_url=clothing_url,
+            garment_description=garment_desc,
+        )
+
+        stored_url = await storage.upload(
+            "tryon-results", f"{job_id}/result.jpg", result_bytes, "image/jpeg"
+        )
+
+        db.table(_TABLE).update(
+            {"status": TryOnStatus.completed.value, "result_url": stored_url}
+        ).eq("id", job_id).execute()
+
+        _update_event(job_id, TryOnStatus.completed, "Try-on complete.", result_url=stored_url)
+
+    except AppError as exc:
+        db.table(_TABLE).update(
+            {"status": TryOnStatus.failed.value, "error_message": exc.detail}
+        ).eq("id", job_id).execute()
+        _update_event(job_id, TryOnStatus.failed, exc.detail)
+    except Exception as exc:
+        logger.exception("HuggingFace job failed for %s", job_id)
+        db.table(_TABLE).update(
+            {"status": TryOnStatus.failed.value, "error_message": str(exc)}
+        ).eq("id", job_id).execute()
+        _update_event(job_id, TryOnStatus.failed, str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
 
-@router.post("", response_model=Dict[str, str], status_code=202)
+@router.post("/start", response_model=Dict[str, str], status_code=202)
 async def start_tryon(
     payload: TryOnJobCreate,
     background_tasks: BackgroundTasks,
@@ -152,36 +201,30 @@ async def start_tryon(
     except Exception as exc:
         raise ValidationError(f"Invalid base64 person image: {exc}") from exc
 
-    person_path = f"{current_user.id}/{job_id}/person.jpg"
-    person_url = await storage.upload("tryon-inputs", person_path, person_bytes, "image/jpeg")
-
     # ---- Get clothing segmented URL -------------------------------------
-    wardrobe_resp = (
-        db.table(_WARDROBE_TABLE)
-        .select("segmented_url, clip_attributes, name")
-        .eq("id", str(payload.wardrobe_item_id))
-        .eq("user_id", current_user.id)
-        .maybe_single()
-        .execute()
-    )
+    try:
+        wardrobe_resp = (
+            db.table(_WARDROBE_TABLE)
+            .select("segmented_url, original_url, attributes, name")
+            .eq("id", str(payload.wardrobe_item_id))
+            .eq("user_id", current_user.id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as exc:
+        logger.exception("Wardrobe query failed")
+        raise
     if not wardrobe_resp.data:
         raise NotFoundError(f"Wardrobe item {payload.wardrobe_item_id} not found.")
 
     clothing_url: str = wardrobe_resp.data.get("segmented_url") or wardrobe_resp.data.get("original_url", "")
-    clip_attrs = wardrobe_resp.data.get("clip_attributes") or {}
+    clip_attrs = wardrobe_resp.data.get("attributes") or {}
     garment_desc = (
         f"{clip_attrs.get('style', '')} {clip_attrs.get('color', '')} "
         f"{clip_attrs.get('pattern', '')} clothing"
     ).strip()
     if not garment_desc:
         garment_desc = wardrobe_resp.data.get("name") or "clothing item"
-
-    # ---- Start Replicate prediction -------------------------------------
-    prediction_id = await run_tryon(
-        person_image_url=person_url,
-        clothing_image_url=clothing_url,
-        garment_description=garment_desc,
-    )
 
     # ---- Persist job to DB ----------------------------------------------
     db.table(_TABLE).insert(
@@ -190,16 +233,18 @@ async def start_tryon(
             "user_id": current_user.id,
             "wardrobe_item_id": str(payload.wardrobe_item_id),
             "status": TryOnStatus.pending.value,
-            "replicate_prediction_id": prediction_id,
-            "person_image_url": person_url,
+            "person_image_url": "",
         }
     ).execute()
 
-    # ---- Start background poller ----------------------------------------
+    # ---- Start HuggingFace try-on in background -------------------------
+    # Pass person_bytes directly to avoid private-bucket URL auth issues
     _update_event(job_id, TryOnStatus.pending, "Job queued.")
-    background_tasks.add_task(_poll_replicate, job_id, prediction_id)
+    background_tasks.add_task(
+        _run_hf_job, job_id, person_bytes, clothing_url, garment_desc, current_user.id
+    )
 
-    return {"job_id": job_id, "status": TryOnStatus.pending.value}
+    return {"id": job_id, "status": TryOnStatus.pending.value}
 
 
 @router.get("/history", response_model=List[TryOnJobResponse])

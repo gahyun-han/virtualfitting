@@ -5,7 +5,8 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Any
 
 
 class ClothingCategory(str, Enum):
@@ -58,3 +59,16 @@ class WardrobeItemResponse(BaseModel):
 
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _map_db_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        # Map DB columns (attributes + clip_confidence) → clip_attributes
+        if "clip_attributes" not in data or data.get("clip_attributes") is None:
+            attrs = data.get("attributes") or {}
+            confidence = data.get("clip_confidence") or 0.0
+            if attrs or confidence:
+                data["clip_attributes"] = {**attrs, "confidence": confidence}
+        return data

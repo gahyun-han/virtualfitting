@@ -35,7 +35,8 @@ export function useUpload(): UseUploadReturn {
 
       // Step 2: Connect to SSE stream for progress updates
       const token = await getAuthToken()
-      const streamUrl = `/api/backend/api/v1/upload/clothing/stream/${job_id}`
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const streamUrl = `${backendUrl}/api/v1/upload/clothing/stream/${job_id}`
 
       await new Promise<void>((resolve, reject) => {
         // EventSource doesn't support custom headers natively,

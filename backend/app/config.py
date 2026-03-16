@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str
     SUPABASE_JWT_SECRET: str
 
-    # Replicate
-    REPLICATE_API_TOKEN: str
+    # Replicate (unused – kept for env compatibility)
+    REPLICATE_API_TOKEN: str = ""
+
+    # HuggingFace
+    HF_TOKEN: Optional[str] = None
 
     # Storage
     STORAGE_BACKEND: str = "supabase"  # "supabase" | "s3"

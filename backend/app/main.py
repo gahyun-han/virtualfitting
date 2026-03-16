@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from app.services.segmentation import load_rembg_session
 
         load_rembg_session(settings.REMBG_MODEL)
-    except Exception as exc:
+    except BaseException as exc:
         logger.error("rembg failed to initialise: %s", exc)
 
     logger.info("Loading CLIP model (%s)…", settings.CLIP_MODEL)

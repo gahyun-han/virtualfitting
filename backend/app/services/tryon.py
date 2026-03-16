@@ -2,141 +2,97 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+import os
+import tempfile
+from typing import Any, Dict
+
+import httpx
 
 from app.utils.errors import TryOnError
 
 logger = logging.getLogger(__name__)
 
-# Replicate model identifier
-_REPLICATE_MODEL = "yisol/idm-vton"
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_replicate_client():  # type: ignore[return]
-    """Return an authenticated Replicate client."""
-    import replicate  # type: ignore[import]
-
-    from app.config import get_settings
-
-    settings = get_settings()
-    client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
-    return client
-
-
-# ---------------------------------------------------------------------------
-# Public async API
-# ---------------------------------------------------------------------------
+_HF_SPACE = "yisol/IDM-VTON"
 
 
 async def run_tryon(
-    person_image_url: str,
+    person_image_bytes: bytes,
     clothing_image_url: str,
     garment_description: str,
-) -> str:
-    """Start a Replicate IDM-VTON prediction and return the prediction ID.
+) -> bytes:
+    """Run IDM-VTON via HuggingFace Space.
 
-    The call is non-blocking: it creates the prediction asynchronously and
-    returns immediately with the prediction ID.  Use :func:`get_tryon_result`
-    to poll for completion.
+    Accepts person image as bytes (avoids private-bucket auth issues).
+    Downloads clothing image from URL (public bucket), calls the Gradio
+    Space, and returns the result image as bytes.
     """
     loop = asyncio.get_event_loop()
 
-    def _create_prediction() -> str:
-        client = _get_replicate_client()
-        import replicate  # type: ignore[import]
+    def _run() -> bytes:
+        from gradio_client import Client, handle_file  # type: ignore[import]
 
-        # Resolve the latest version of the model
-        model = client.models.get(_REPLICATE_MODEL)
-        version = model.latest_version
+        with tempfile.TemporaryDirectory() as tmpdir:
+            person_path = os.path.join(tmpdir, "person.jpg")
+            clothing_path = os.path.join(tmpdir, "clothing.jpg")
 
-        prediction = replicate.predictions.create(
-            version=version.id,
-            input={
-                "human_img": person_image_url,
-                "garm_img": clothing_image_url,
-                "garment_des": garment_description,
-                "is_checked": True,
-                "denoise_steps": 30,
-                "seed": 42,
-            },
-        )
-        return prediction.id
+            # Write person bytes directly
+            with open(person_path, "wb") as f:
+                f.write(person_image_bytes)
 
-    try:
-        prediction_id: str = await loop.run_in_executor(None, _create_prediction)
-        logger.info("Replicate prediction created: %s", prediction_id)
-        return prediction_id
-    except TryOnError:
-        raise
-    except Exception as exc:
-        logger.exception("Failed to create Replicate prediction")
-        raise TryOnError(f"Replicate prediction creation failed: {exc}") from exc
+            # Download clothing image
+            with httpx.Client(timeout=60) as http:
+                r = http.get(clothing_image_url)
+                r.raise_for_status()
+                with open(clothing_path, "wb") as f:
+                    f.write(r.content)
+
+            from app.config import get_settings
+            hf_token = get_settings().HF_TOKEN
+            if hf_token:
+                from huggingface_hub import login  # type: ignore[import]
+                login(token=hf_token)
+            logger.info("Connecting to HuggingFace Space %s …", _HF_SPACE)
+            client = Client(_HF_SPACE)
+
+            result = client.predict(
+                dict={
+                    "background": handle_file(person_path),
+                    "layers": [],
+                    "composite": None,
+                },
+                garm_img=handle_file(clothing_path),
+                garment_des=garment_description,
+                is_checked=True,
+                is_checked_crop=False,
+                denoise_steps=30,
+                seed=42,
+                api_name="/tryon",
+            )
+
+            # result is (output_image_path, masked_image_path)
+            result_path = result[0] if isinstance(result, (list, tuple)) else result
+            with open(result_path, "rb") as f:
+                return f.read()
+
+    max_retries = 3
+    last_exc: Exception = RuntimeError("Unknown error")
+    for attempt in range(1, max_retries + 1):
+        try:
+            result_bytes: bytes = await loop.run_in_executor(None, _run)
+            logger.info("HuggingFace try-on completed successfully.")
+            return result_bytes
+        except TryOnError:
+            raise
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("HuggingFace try-on attempt %d/%d failed: %s", attempt, max_retries, exc)
+            if attempt < max_retries:
+                await asyncio.sleep(10)  # wait before retry
+
+    logger.error("HuggingFace try-on failed after %d attempts", max_retries)
+    raise TryOnError(f"HuggingFace try-on failed: {last_exc}") from last_exc
 
 
 async def get_tryon_result(prediction_id: str) -> Dict[str, Any]:
-    """Fetch the current status and output of a Replicate prediction.
-
-    Returns a dict with at minimum:
-        - ``status``: one of ``"starting"``, ``"processing"``, ``"succeeded"``, ``"failed"``
-        - ``output``: list of output URLs (when status is ``"succeeded"``)
-        - ``error``: error message (when status is ``"failed"``)
-    """
-    loop = asyncio.get_event_loop()
-
-    def _fetch() -> Dict[str, Any]:
-        import replicate  # type: ignore[import]
-
-        prediction = replicate.predictions.get(prediction_id)
-        result: Dict[str, Any] = {
-            "id": prediction.id,
-            "status": prediction.status,
-            "output": prediction.output,
-            "error": prediction.error,
-            "created_at": str(prediction.created_at) if prediction.created_at else None,
-            "completed_at": str(prediction.completed_at) if getattr(prediction, "completed_at", None) else None,
-        }
-        return result
-
-    try:
-        data: Dict[str, Any] = await loop.run_in_executor(None, _fetch)
-        return data
-    except TryOnError:
-        raise
-    except Exception as exc:
-        logger.exception("Failed to fetch Replicate prediction %s", prediction_id)
-        raise TryOnError(f"Could not retrieve prediction result: {exc}") from exc
-
-
-async def wait_for_tryon_result(
-    prediction_id: str,
-    poll_interval: float = 3.0,
-    timeout: float = 300.0,
-) -> str:
-    """Poll until the prediction completes and return the result image URL.
-
-    Raises :class:`~app.utils.errors.TryOnError` on failure or timeout.
-    """
-    elapsed = 0.0
-    while elapsed < timeout:
-        data = await get_tryon_result(prediction_id)
-        status = data.get("status", "")
-
-        if status == "succeeded":
-            output = data.get("output")
-            if isinstance(output, list) and output:
-                return output[0]
-            raise TryOnError("Replicate prediction succeeded but returned no output.")
-
-        if status == "failed":
-            error_msg = data.get("error") or "Unknown error"
-            raise TryOnError(f"Replicate prediction failed: {error_msg}")
-
-        logger.debug("Prediction %s status=%s – waiting %.0fs …", prediction_id, status, poll_interval)
-        await asyncio.sleep(poll_interval)
-        elapsed += poll_interval
-
-    raise TryOnError(f"Prediction {prediction_id} timed out after {timeout}s.")
+    """Unused stub kept for import compatibility."""
+    return {}

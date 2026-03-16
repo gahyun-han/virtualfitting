@@ -1,7 +1,7 @@
 import { getSupabaseClient } from './supabase'
 import type { WardrobeItem, TryOnJob, ClothingCategory } from '@/types'
 
-const BASE_URL = '/api/backend'
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 async function getAuthHeader(): Promise<Record<string, string>> {
   const supabase = getSupabaseClient()
