@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str
     SUPABASE_JWT_SECRET: str
 
-    # Replicate (unused – kept for env compatibility)
+    # Replicate
     REPLICATE_API_TOKEN: str = ""
 
     # HuggingFace

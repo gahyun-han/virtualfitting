@@ -7,7 +7,7 @@ FROM python:3.11-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libglib2.0-0 \
-        libgl1-mesa-glx \
+        libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -35,7 +35,7 @@ LABEL description="FastAPI backend for AI-powered virtual clothing try-on"
 # Runtime dependencies for PIL / OpenCV / rembg
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-0 \
-        libgl1-mesa-glx \
+        libgl1 \
         libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,15 +51,23 @@ COPY app/ ./app/
 # runtime (optional – comment out if you prefer lazy download)
 # RUN python -c "from rembg import new_session; new_session('u2net')"
 
-# Create a non-root user for security
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+# Create a non-root user with a real home directory
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup --home /home/appuser appuser \
+    && mkdir -p /home/appuser/.cache \
+    && chown -R appuser:appgroup /home/appuser
+
+# Set cache directories to writable locations
+ENV HF_HOME=/home/appuser/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/home/appuser/.cache/huggingface
+ENV U2NET_HOME=/home/appuser/.cache/u2net
+
 USER appuser
 
-EXPOSE 8000
+EXPOSE 7860
 
-# Uvicorn with multiple workers; override via CMD or env for development
+# HuggingFace Spaces requires port 7860
 CMD ["uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
-     "--port", "8000", \
+     "--port", "7860", \
      "--workers", "2", \
      "--log-level", "info"]
