@@ -1,64 +1,71 @@
 'use client'
 
-import {
-  ReactCompareSlider,
-  ReactCompareSliderImage,
-  ReactCompareSliderHandle,
-} from 'react-compare-slider'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 interface ResultViewerProps {
-  beforeUrl: string
-  afterUrl: string
+  personUrl: string
+  clothingUrls: string[]
+  resultUrl: string
   className?: string
 }
 
 export default function ResultViewer({
-  beforeUrl,
-  afterUrl,
+  personUrl,
+  clothingUrls,
+  resultUrl,
   className,
 }: ResultViewerProps) {
   return (
-    <div className={cn('rounded-2xl overflow-hidden', className)}>
-      <ReactCompareSlider
-        itemOne={
-          <ReactCompareSliderImage
-            src={beforeUrl}
-            alt="Before — original photo"
-            style={{ objectFit: 'cover' }}
-          />
-        }
-        itemTwo={
-          <ReactCompareSliderImage
-            src={afterUrl}
-            alt="After — virtual try-on"
-            style={{ objectFit: 'cover' }}
-          />
-        }
-        handle={
-          <ReactCompareSliderHandle
-            buttonStyle={{
-              backdropFilter: 'blur(4px)',
-              background: 'rgba(255, 255, 255, 0.9)',
-              border: '2px solid white',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
-              color: '#000',
-              width: 44,
-              height: 44,
-            }}
-            linesStyle={{
-              background: 'rgba(255, 255, 255, 0.8)',
-              width: 2,
-            }}
-          />
-        }
-        style={{ aspectRatio: '3/4', width: '100%' }}
-      />
+    <div className={cn('grid grid-cols-3 gap-2 items-stretch', className)}>
+      {/* Body */}
+      <div className="flex flex-col gap-1">
+        <span className="text-[10px] text-zinc-500 text-center">Body</span>
+        <div className="relative flex-1 w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+          {personUrl ? (
+            <Image src={personUrl} alt="Body" fill className="object-contain" />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-zinc-600 text-xs">No photo</span>
+            </div>
+          )}
+        </div>
+      </div>
 
-      {/* Labels */}
-      <div className="flex justify-between px-4 py-2 text-xs text-zinc-500">
-        <span>← Original</span>
-        <span>Try-On →</span>
+      {/* Outfit */}
+      <div className="flex flex-col gap-1">
+        <span className="text-[10px] text-zinc-500 text-center">Outfit</span>
+        {clothingUrls.length === 0 && (
+          <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-zinc-600 text-xs">No item</span>
+            </div>
+          </div>
+        )}
+        {clothingUrls.length === 1 && (
+          <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+            <Image src={clothingUrls[0]} alt="Outfit" fill className="object-contain" />
+          </div>
+        )}
+        {clothingUrls.length >= 2 && (
+          <div className="flex flex-col gap-1">
+            <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+              <Image src={clothingUrls[0]} alt="Top" fill className="object-contain" />
+            </div>
+            <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+              <Image src={clothingUrls[1]} alt="Bottom" fill className="object-contain" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Result — same height as outfit column */}
+      <div className="flex flex-col gap-1">
+        <span className="text-[10px] text-zinc-500 text-center">Result</span>
+        <div className="relative flex-1 w-full rounded-xl overflow-hidden bg-zinc-900"
+             style={{ aspectRatio: clothingUrls.length >= 2 ? '3/8' : '3/4' }}>
+          <Image src={resultUrl} alt="Try-on result" fill className="object-contain" />
+        </div>
       </div>
     </div>
   )

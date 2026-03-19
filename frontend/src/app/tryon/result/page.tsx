@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Share2, Download, RotateCcw, Loader2 } from 'lucide-react'
 import TopBar from '@/components/layout/TopBar'
@@ -12,7 +12,20 @@ function ResultPageContent() {
   const searchParams = useSearchParams()
 
   const resultUrl = searchParams.get('result') ?? ''
-  const personUrl = searchParams.get('person') ?? ''
+  const [personUrl, setPersonUrl] = useState('')
+  const [clothingUrls, setClothingUrls] = useState<string[]>([])
+
+  useEffect(() => {
+    const person = sessionStorage.getItem('tryon_person_image')
+    if (person) { setPersonUrl(person); sessionStorage.removeItem('tryon_person_image') }
+
+    const urls: string[] = []
+    const top = sessionStorage.getItem('tryon_clothing_image')
+    if (top) { urls.push(top); sessionStorage.removeItem('tryon_clothing_image') }
+    const bottom = sessionStorage.getItem('tryon_bottom_clothing_image')
+    if (bottom) { urls.push(bottom); sessionStorage.removeItem('tryon_bottom_clothing_image') }
+    setClothingUrls(urls)
+  }, [])
 
   const canShare =
     typeof navigator !== 'undefined' && !!navigator.share
@@ -68,22 +81,16 @@ function ResultPageContent() {
     )
   }
 
-  // Use person image from data URL or a placeholder
-  const beforeUrl = personUrl || resultUrl
-
   return (
     <div className="min-h-screen bg-black flex flex-col">
       <TopBar title="Try-On Result" showBack />
 
       <main className="flex-1 pb-24 overflow-y-auto">
         <div className="px-4 pt-4 space-y-4">
-          <p className="text-zinc-400 text-sm text-center">
-            Drag the handle to compare before & after
-          </p>
-
           <ResultViewer
-            beforeUrl={beforeUrl}
-            afterUrl={resultUrl}
+            personUrl={personUrl}
+            clothingUrls={clothingUrls}
+            resultUrl={resultUrl}
             className="w-full"
           />
 

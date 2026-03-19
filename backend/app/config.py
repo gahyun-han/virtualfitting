@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Replicate
     REPLICATE_API_TOKEN: str = ""
 
+    # fal.ai
+    FAL_KEY: Optional[str] = None
+
     # HuggingFace
     HF_TOKEN: Optional[str] = None
 

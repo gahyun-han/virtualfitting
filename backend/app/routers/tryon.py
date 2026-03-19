@@ -134,13 +134,17 @@ async def _run_hf_job(
     clothing_url: str,
     garment_desc: str,
     user_id: str,
+    bottom_clothing_url: str = "",
+    bottom_garment_desc: str = "",
 ) -> None:
     """Run IDM-VTON via HuggingFace Space and persist the result."""
     db = _get_db()
     storage = get_storage_service()
 
     try:
-        _update_event(job_id, TryOnStatus.processing, "Running virtual try-on (1~2 minutes)…")
+        has_bottom = bool(bottom_clothing_url)
+        step_msg = "Running virtual try-on — top (1~2 min)…" if has_bottom else "Running virtual try-on (1~2 minutes)…"
+        _update_event(job_id, TryOnStatus.processing, step_msg)
         db.table(_TABLE).update({"status": TryOnStatus.processing.value}).eq("id", job_id).execute()
 
         result_bytes = await run_tryon(
@@ -148,6 +152,15 @@ async def _run_hf_job(
             clothing_image_url=clothing_url,
             garment_description=garment_desc,
         )
+
+        # Second pass: apply bottom garment onto the first result
+        if has_bottom:
+            _update_event(job_id, TryOnStatus.processing, "Running virtual try-on — bottom (1~2 min)…")
+            result_bytes = await run_tryon(
+                person_image_bytes=result_bytes,
+                clothing_image_url=bottom_clothing_url,
+                garment_description=bottom_garment_desc,
+            )
 
         stored_url = await storage.upload(
             "tryon-results", f"{job_id}/result.jpg", result_bytes, "image/jpeg"
@@ -226,6 +239,29 @@ async def start_tryon(
     if not garment_desc:
         garment_desc = wardrobe_resp.data.get("name") or "clothing item"
 
+    # ---- Optional: bottom garment ----------------------------------------
+    bottom_clothing_url = ""
+    bottom_garment_desc = ""
+    if payload.bottom_wardrobe_item_id:
+        try:
+            bottom_resp = (
+                db.table(_WARDROBE_TABLE)
+                .select("segmented_url, original_url, attributes, name")
+                .eq("id", str(payload.bottom_wardrobe_item_id))
+                .eq("user_id", current_user.id)
+                .maybe_single()
+                .execute()
+            )
+            if bottom_resp.data:
+                bottom_clothing_url = bottom_resp.data.get("segmented_url") or bottom_resp.data.get("original_url", "")
+                bottom_attrs = bottom_resp.data.get("attributes") or {}
+                bottom_garment_desc = (
+                    f"{bottom_attrs.get('style', '')} {bottom_attrs.get('color', '')} "
+                    f"{bottom_attrs.get('pattern', '')} bottom"
+                ).strip() or bottom_resp.data.get("name") or "bottom"
+        except Exception as exc:
+            logger.warning("Could not load bottom wardrobe item: %s", exc)
+
     # ---- Persist job to DB ----------------------------------------------
     db.table(_TABLE).insert(
         {
@@ -238,10 +274,10 @@ async def start_tryon(
     ).execute()
 
     # ---- Start HuggingFace try-on in background -------------------------
-    # Pass person_bytes directly to avoid private-bucket URL auth issues
     _update_event(job_id, TryOnStatus.pending, "Job queued.")
     background_tasks.add_task(
-        _run_hf_job, job_id, person_bytes, clothing_url, garment_desc, current_user.id
+        _run_hf_job, job_id, person_bytes, clothing_url, garment_desc, current_user.id,
+        bottom_clothing_url, bottom_garment_desc,
     )
 
     return {"id": job_id, "status": TryOnStatus.pending.value}

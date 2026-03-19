@@ -20,6 +20,7 @@ class TryOnJobCreate(BaseModel):
 
     wardrobe_item_id: UUID
     person_image_base64: str  # base64-encoded image
+    bottom_wardrobe_item_id: Optional[UUID] = None  # optional second garment (bottom)
 
 
 class TryOnJobResponse(BaseModel):

@@ -12,7 +12,7 @@ interface UseTryOnReturn {
   resultUrl: string | null
   loading: boolean
   error: string | null
-  start: (wardrobeItemId: string, personImageBase64: string) => Promise<void>
+  start: (wardrobeItemId: string, personImageBase64: string, bottomItemId?: string) => Promise<void>
   reset: () => void
 }
 
@@ -57,7 +57,7 @@ export function useTryOn(): UseTryOnReturn {
     }, POLL_INTERVAL_MS)
   }, [])
 
-  const start = async (wardrobeItemId: string, personImageBase64: string) => {
+  const start = async (wardrobeItemId: string, personImageBase64: string, bottomItemId?: string) => {
     setLoading(true)
     setError(null)
     setResultUrl(null)
@@ -67,6 +67,7 @@ export function useTryOn(): UseTryOnReturn {
       const job = await startTryOn({
         wardrobe_item_id: wardrobeItemId,
         person_image_base64: personImageBase64,
+        ...(bottomItemId ? { bottom_wardrobe_item_id: bottomItemId } : {}),
       })
 
       setJobId(job.id)

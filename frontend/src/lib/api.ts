@@ -79,6 +79,7 @@ export async function updateWardrobeItem(
 export interface StartTryOnPayload {
   wardrobe_item_id: string
   person_image_base64: string
+  bottom_wardrobe_item_id?: string
 }
 
 export async function startTryOn(
