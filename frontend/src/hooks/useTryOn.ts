@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react'
 import { startTryOn, getTryOnJob } from '@/lib/api'
 import type { TryOnStatus } from '@/types'
 
-const POLL_INTERVAL_MS = 3000
+const POLL_INTERVAL_MS = 10000
 
 interface UseTryOnReturn {
   jobId: string | null
