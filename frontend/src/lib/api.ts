@@ -103,7 +103,8 @@ export async function getTryOnHistory(): Promise<TryOnJob[]> {
 // ── Upload (multipart — no Content-Type override) ─────────────────────────────
 
 export async function uploadClothingFile(
-  file: File
+  file: File,
+  category?: string
 ): Promise<{ job_id: string; stream_url: string }> {
   const supabase = getSupabaseClient()
   const {
@@ -114,6 +115,7 @@ export async function uploadClothingFile(
 
   const formData = new FormData()
   formData.append('file', file)
+  if (category) formData.append('category', category)
 
   const res = await fetch(`${BASE_URL}/api/v1/upload/clothing`, {
     method: 'POST',

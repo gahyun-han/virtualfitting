@@ -6,7 +6,7 @@ import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Form, UploadFile
 from sse_starlette.sse import EventSourceResponse  # type: ignore[import]
 
 from app.config import get_settings
@@ -66,6 +66,7 @@ async def _run_upload_pipeline(
     file_bytes: bytes,
     original_filename: str,
     user: UserContext,
+    user_category: Optional[str] = None,
 ) -> None:
     """Execute the full clothing upload pipeline and update _job_progress."""
     settings = get_settings()
@@ -122,23 +123,27 @@ async def _run_upload_pipeline(
         _update_job(job_id, "classifying", 75, "Classifying clothing…")
         clip_attrs: ClipAttributes = await classify_clothing(segmented_bytes)
 
-        # Determine category from CLIP
-        from app.services.classification import _detect_category as _clip_detect_category  # noqa: PLC0415
+        # Determine category: use user selection if provided, else CLIP
+        if user_category and user_category in [c.value for c in ClothingCategory]:
+            category_value: str = user_category
+            logger.info("Using user-selected category: %s", category_value)
+        else:
+            from app.services.classification import _detect_category as _clip_detect_category  # noqa: PLC0415
 
-        category_value: str = ClothingCategory.top.value  # default
-        try:
-            import io as _io  # noqa: PLC0415
-            from PIL import Image as _Image  # noqa: PLC0415
+            category_value = ClothingCategory.top.value  # default
+            try:
+                import io as _io  # noqa: PLC0415
+                from PIL import Image as _Image  # noqa: PLC0415
 
-            def _run_detect(img_bytes: bytes) -> str:
-                image = _Image.open(_io.BytesIO(img_bytes)).convert("RGB")
-                cat, _ = _clip_detect_category(image)
-                return cat.value
+                def _run_detect(img_bytes: bytes) -> str:
+                    image = _Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+                    cat, _ = _clip_detect_category(image)
+                    return cat.value
 
-            loop = asyncio.get_event_loop()
-            category_value = await loop.run_in_executor(None, _run_detect, segmented_bytes)
-        except Exception as exc:
-            logger.warning("Category detection failed, using default 'top': %s", exc)
+                loop = asyncio.get_event_loop()
+                category_value = await loop.run_in_executor(None, _run_detect, segmented_bytes)
+            except Exception as exc:
+                logger.warning("Category detection failed, using default 'top': %s", exc)
 
         # ------------------------------------------------------------------ #
         # Stage 6 – Save to DB                                                #
@@ -192,6 +197,7 @@ async def _run_upload_pipeline(
 @router.post("/clothing", status_code=202)
 async def upload_clothing(
     file: UploadFile,
+    category: Optional[str] = Form(None),
     current_user: UserContext = Depends(get_current_user),
 ) -> Dict[str, str]:
     """Accept a clothing image, validate it, and start the async pipeline.
@@ -227,6 +233,7 @@ async def upload_clothing(
             file_bytes=file_bytes,
             original_filename=file.filename or "upload",
             user=current_user,
+            user_category=category,
         )
     )
 

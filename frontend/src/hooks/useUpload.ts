@@ -9,7 +9,7 @@ interface UseUploadReturn {
   item: WardrobeItem | null
   loading: boolean
   error: string | null
-  uploadClothing: (file: File) => Promise<void>
+  uploadClothing: (file: File, category?: string) => Promise<void>
   reset: () => void
 }
 
@@ -19,7 +19,7 @@ export function useUpload(): UseUploadReturn {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const uploadClothing = useCallback(async (file: File) => {
+  const uploadClothing = useCallback(async (file: File, category?: string) => {
     setLoading(true)
     setError(null)
     setItem(null)
@@ -31,7 +31,7 @@ export function useUpload(): UseUploadReturn {
 
     try {
       // Step 1: Upload the file and get a stream URL
-      const { job_id } = await uploadClothingFile(file)
+      const { job_id } = await uploadClothingFile(file, category)
 
       // Step 2: Connect to SSE stream for progress updates
       const token = await getAuthToken()
