@@ -148,19 +148,31 @@ def _classify_single(image: Image.Image, prompts: List[str]) -> Tuple[int, float
     return best_idx, probs[best_idx]
 
 
+def _detect_category(image: Image.Image) -> Tuple[ClothingCategory, float]:
+    """Detect category by running all prompts together in one CLIP call.
+
+    This avoids the per-category softmax bias that inflates scores for
+    categories with fewer prompts (e.g. dress has 3 vs top/bottom with 5).
+    """
+    # Build ordered list: [(category, prompt), ...]
+    prompt_map: List[Tuple[ClothingCategory, str]] = [
+        (cat, prompt)
+        for cat, prompts in CATEGORY_PROMPTS.items()
+        for prompt in prompts
+    ]
+    all_prompts = [p for _, p in prompt_map]
+
+    best_idx, confidence = _classify_single(image, all_prompts)
+    best_category = prompt_map[best_idx][0]
+    return best_category, confidence
+
+
 def _run_classification(image_bytes: bytes) -> ClipAttributes:
     """Full CLIP classification pipeline (CPU-bound)."""
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
     # ---- Category --------------------------------------------------------
-    # Score each category independently using per-category prompts
-    category_scores: Dict[ClothingCategory, float] = {}
-    for category, prompts in CATEGORY_PROMPTS.items():
-        _, conf = _classify_single(image, prompts)
-        category_scores[category] = conf
-
-    best_category = max(category_scores, key=lambda c: category_scores[c])
-    category_confidence = category_scores[best_category]
+    best_category, category_confidence = _detect_category(image)
 
     # ---- Color -----------------------------------------------------------
     color_idx, _ = _classify_single(image, COLOR_PROMPTS)

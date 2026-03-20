@@ -22,6 +22,16 @@ export default function ItemDetailPage() {
   const [nameValue, setNameValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [editingCategory, setEditingCategory] = useState(false)
+
+  const CATEGORIES = [
+    { value: 'top', label: 'Top' },
+    { value: 'bottom', label: 'Bottom' },
+    { value: 'dress', label: 'Dress' },
+    { value: 'outerwear', label: 'Outerwear' },
+    { value: 'shoes', label: 'Shoes' },
+    { value: 'accessory', label: 'Accessory' },
+  ]
 
   const { deleteItem, updateItem } = useMutateWardrobe()
 
@@ -182,20 +192,54 @@ export default function ItemDetailPage() {
           </div>
 
           {/* Category badge */}
-          <div className="flex flex-wrap gap-2">
-            <span
-              className={cn(
-                'text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide',
-                categoryColor(item.category)
-              )}
-            >
-              {categoryLabel(item.category)}
-            </span>
-
-            {item.subcategory && (
-              <span className="text-xs font-medium px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 uppercase tracking-wide">
-                {item.subcategory}
-              </span>
+          <div className="flex flex-wrap gap-2 items-center">
+            {editingCategory ? (
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.value}
+                    disabled={saving}
+                    onClick={async () => {
+                      setSaving(true)
+                      try {
+                        const updated = await updateItem(item.id, { category: cat.value as WardrobeItem['category'] })
+                        setItem(updated)
+                        setEditingCategory(false)
+                      } catch (err) { console.error(err) }
+                      setSaving(false)
+                    }}
+                    className={cn(
+                      'text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide border-2 transition-all',
+                      item.category === cat.value
+                        ? 'border-white ' + categoryColor(cat.value as WardrobeItem['category'])
+                        : 'border-transparent ' + categoryColor(cat.value as WardrobeItem['category']) + ' opacity-50'
+                    )}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+                <button onClick={() => setEditingCategory(false)} className="p-1 text-zinc-500 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <span
+                  className={cn(
+                    'text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide',
+                    categoryColor(item.category)
+                  )}
+                >
+                  {categoryLabel(item.category)}
+                </span>
+                <button
+                  onClick={() => setEditingCategory(true)}
+                  className="p-1 text-zinc-500 hover:text-white active:scale-90"
+                  title="Edit category"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              </>
             )}
           </div>
 

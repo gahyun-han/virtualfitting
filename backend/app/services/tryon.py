@@ -104,8 +104,10 @@ def _run_hf_space(space: str, needs_area: bool, person_image_bytes: bytes, cloth
             seed=42,
             api_name="/tryon",
         )
-        if needs_area:
-            kwargs["area"] = _category_to_area(category)
+        area = _category_to_area(category)
+        # Always pass area for non-upper-body; also pass when space requires it
+        if needs_area or area != "upper_body":
+            kwargs["area"] = area
 
         result = client.predict(**kwargs)
 
@@ -136,8 +138,13 @@ async def run_tryon(
                 logger.warning("fal.ai failed, falling back to HF Spaces: %s", exc)
 
         # --- Fallback: HuggingFace Spaces ---
+        area = _category_to_area(category)
         last: Exception = RuntimeError("No try-on backends available")
         for space, needs_area in _HF_SPACES:
+            # Skip spaces that don't support area param when non-upper-body is needed
+            if not needs_area and area != "upper_body":
+                logger.info("Skipping %s (no area support) for category=%s", space, category)
+                continue
             try:
                 return _run_hf_space(space, needs_area, person_image_bytes, clothing_image_url, garment_description, category)
             except Exception as exc:

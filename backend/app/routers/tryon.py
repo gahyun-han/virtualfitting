@@ -144,6 +144,14 @@ async def _run_hf_job(
     storage = get_storage_service()
 
     try:
+        import io
+        from PIL import Image as PilImage
+
+        # Record original person image dimensions for resizing result later
+        person_img = PilImage.open(io.BytesIO(person_bytes))
+        original_size = person_img.size  # (width, height)
+        person_img.close()
+
         has_bottom = bool(bottom_clothing_url)
         step_msg = "Running virtual try-on — top (1~2 min)…" if has_bottom else "Running virtual try-on (1~2 minutes)…"
         _update_event(job_id, TryOnStatus.processing, step_msg)
@@ -165,6 +173,15 @@ async def _run_hf_job(
                 garment_description=bottom_garment_desc,
                 category=bottom_clothing_category,
             )
+
+        # Resize result to match original person image dimensions
+        result_img = PilImage.open(io.BytesIO(result_bytes))
+        if result_img.size != original_size:
+            result_img = result_img.resize(original_size, PilImage.LANCZOS)
+        buf = io.BytesIO()
+        result_img.save(buf, format="JPEG", quality=95)
+        result_bytes = buf.getvalue()
+        result_img.close()
 
         stored_url = await storage.upload(
             "tryon-results", f"{job_id}/result.jpg", result_bytes, "image/jpeg"

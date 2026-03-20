@@ -122,41 +122,21 @@ async def _run_upload_pipeline(
         _update_job(job_id, "classifying", 75, "Classifying clothing…")
         clip_attrs: ClipAttributes = await classify_clothing(segmented_bytes)
 
-        # Determine category from CLIP (re-run category detection)
-        from app.services.classification import CATEGORY_PROMPTS, _run_classification  # noqa: PLC0415
+        # Determine category from CLIP
+        from app.services.classification import _detect_category as _clip_detect_category  # noqa: PLC0415
 
-        # We already have attributes; derive category from the confidence score
-        # by running a quick per-category probe against segmented image
         category_value: str = ClothingCategory.top.value  # default
         try:
-            import asyncio  # noqa: PLC0415 – already imported but re-scoped for clarity
-            from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+            import io as _io  # noqa: PLC0415
+            from PIL import Image as _Image  # noqa: PLC0415
 
-            import torch  # type: ignore[import]
-            from transformers import CLIPModel, CLIPProcessor  # type: ignore[import]
-
-            from app.services.classification import (  # noqa: PLC0415
-                _get_model_and_processor,
-                _softmax,
-            )
-
-            def _detect_category(img_bytes: bytes) -> str:
-                from PIL import Image as _Image  # noqa: PLC0415
-                import io as _io  # noqa: PLC0415
-
+            def _run_detect(img_bytes: bytes) -> str:
                 image = _Image.open(_io.BytesIO(img_bytes)).convert("RGB")
-                model, processor = _get_model_and_processor()
-                category_scores: Dict[str, float] = {}
-                for cat, prompts in CATEGORY_PROMPTS.items():
-                    inputs = processor(text=prompts, images=image, return_tensors="pt", padding=True)
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                        probs = _softmax(outputs.logits_per_image[0].tolist())
-                    category_scores[cat.value] = max(probs)
-                return max(category_scores, key=lambda k: category_scores[k])
+                cat, _ = _clip_detect_category(image)
+                return cat.value
 
             loop = asyncio.get_event_loop()
-            category_value = await loop.run_in_executor(None, _detect_category, segmented_bytes)
+            category_value = await loop.run_in_executor(None, _run_detect, segmented_bytes)
         except Exception as exc:
             logger.warning("Category detection failed, using default 'top': %s", exc)
 

@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 interface ResultViewerProps {
@@ -16,14 +17,27 @@ export default function ResultViewer({
   resultUrl,
   className,
 }: ResultViewerProps) {
+  const [personAspect, setPersonAspect] = useState<number>(3 / 4)
+
   return (
-    <div className={cn('grid grid-cols-3 gap-2 items-stretch', className)}>
+    <div className={cn('grid grid-cols-3 gap-2 items-start', className)}>
       {/* Body */}
       <div className="flex flex-col gap-1">
         <span className="text-[10px] text-zinc-500 text-center">Body</span>
-        <div className="relative flex-1 w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+        <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: personAspect }}>
           {personUrl ? (
-            <Image src={personUrl} alt="Body" fill className="object-contain" />
+            <Image
+              src={personUrl}
+              alt="Body"
+              fill
+              className="object-contain"
+              onLoad={(e) => {
+                const img = e.currentTarget
+                if (img.naturalWidth && img.naturalHeight) {
+                  setPersonAspect(img.naturalWidth / img.naturalHeight)
+                }
+              }}
+            />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-zinc-600 text-xs">No photo</span>
@@ -36,14 +50,14 @@ export default function ResultViewer({
       <div className="flex flex-col gap-1">
         <span className="text-[10px] text-zinc-500 text-center">Outfit</span>
         {clothingUrls.length === 0 && (
-          <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+          <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: personAspect }}>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-zinc-600 text-xs">No item</span>
             </div>
           </div>
         )}
         {clothingUrls.length === 1 && (
-          <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '3/4' }}>
+          <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: personAspect }}>
             <Image src={clothingUrls[0]} alt="Outfit" fill className="object-contain" />
           </div>
         )}
@@ -59,11 +73,10 @@ export default function ResultViewer({
         )}
       </div>
 
-      {/* Result — same height as outfit column */}
+      {/* Result — same aspect ratio as person image */}
       <div className="flex flex-col gap-1">
         <span className="text-[10px] text-zinc-500 text-center">Result</span>
-        <div className="relative flex-1 w-full rounded-xl overflow-hidden bg-zinc-900"
-             style={{ aspectRatio: clothingUrls.length >= 2 ? '3/8' : '3/4' }}>
+        <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: personAspect }}>
           <Image src={resultUrl} alt="Try-on result" fill className="object-contain" />
         </div>
       </div>
