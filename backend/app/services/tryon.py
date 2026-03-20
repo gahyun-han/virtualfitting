@@ -51,12 +51,19 @@ def _run_fal_fashn(
     logger.info("Uploading person image to fal.ai storage (FASHN) …")
     person_url = fal_client.upload(person_image_bytes, "image/jpeg")
 
+    logger.info("Downloading clothing image for fal.ai upload …")
+    with httpx.Client(timeout=60) as http:
+        r = http.get(clothing_image_url)
+        r.raise_for_status()
+        clothing_bytes = r.content
+    clothing_url = fal_client.upload(clothing_bytes, "image/png")
+
     logger.info("Calling fal-ai/fashn/tryon/v1.5 (category=%s) …", fashn_category)
     result = fal_client.subscribe(
         "fal-ai/fashn/tryon/v1.5",
         arguments={
             "model_image": person_url,
-            "garment_image": clothing_image_url,
+            "garment_image": clothing_url,
             "category": fashn_category,
         },
     )
@@ -91,12 +98,19 @@ def _run_fal_idmvton(
     logger.info("Uploading person image to fal.ai storage (IDM-VTON) …")
     person_url = fal_client.upload(person_image_bytes, "image/jpeg")
 
+    logger.info("Downloading clothing image for fal.ai upload …")
+    with httpx.Client(timeout=60) as http:
+        r = http.get(clothing_image_url)
+        r.raise_for_status()
+        clothing_bytes = r.content
+    clothing_url = fal_client.upload(clothing_bytes, "image/png")
+
     logger.info("Calling fal-ai/idm-vton …")
     result = fal_client.subscribe(
         "fal-ai/idm-vton",
         arguments={
             "human_image_url": person_url,
-            "garment_image_url": clothing_image_url,
+            "garment_image_url": clothing_url,
             "description": garment_description,
             "num_inference_steps": 30,
             "seed": 42,
@@ -179,8 +193,10 @@ def _run_hf_spaces(
     area = _category_to_area(category)
     last: Exception = RuntimeError("No try-on backends available")
     for space, needs_area in _HF_SPACES:
-        if not needs_area and area == "dresses":
-            logger.info("Skipping %s (no dresses area support)", space)
+        # yisol silently ignores area param and always does upper_body.
+        # Skip it for anything that requires a specific area.
+        if not needs_area and area != "upper_body":
+            logger.info("Skipping %s (ignores area=%s)", space, area)
             continue
         try:
             return _run_hf_space(space, needs_area, person_image_bytes, clothing_image_url, garment_description, category)
