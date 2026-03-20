@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Share2, Download, RotateCcw, Loader2 } from 'lucide-react'
 import TopBar from '@/components/layout/TopBar'
@@ -12,19 +12,12 @@ function ResultPageContent() {
   const searchParams = useSearchParams()
 
   const resultUrl = searchParams.get('result') ?? ''
-  const [personUrl, setPersonUrl] = useState('')
-  const [clothingUrls, setClothingUrls] = useState<string[]>([])
 
   useEffect(() => {
-    const person = sessionStorage.getItem('tryon_person_image')
-    if (person) { setPersonUrl(person); sessionStorage.removeItem('tryon_person_image') }
-
-    const urls: string[] = []
-    const top = sessionStorage.getItem('tryon_clothing_image')
-    if (top) { urls.push(top); sessionStorage.removeItem('tryon_clothing_image') }
-    const bottom = sessionStorage.getItem('tryon_bottom_clothing_image')
-    if (bottom) { urls.push(bottom); sessionStorage.removeItem('tryon_bottom_clothing_image') }
-    setClothingUrls(urls)
+    // Clear any leftover session storage from the try-on flow
+    sessionStorage.removeItem('tryon_person_image')
+    sessionStorage.removeItem('tryon_clothing_image')
+    sessionStorage.removeItem('tryon_bottom_clothing_image')
   }, [])
 
   const canShare =
@@ -88,8 +81,6 @@ function ResultPageContent() {
       <main className="flex-1 pb-24 overflow-y-auto">
         <div className="px-4 pt-4 space-y-4">
           <ResultViewer
-            personUrl={personUrl}
-            clothingUrls={clothingUrls}
             resultUrl={resultUrl}
             className="w-full"
           />

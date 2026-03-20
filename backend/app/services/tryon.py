@@ -141,9 +141,9 @@ async def run_tryon(
         area = _category_to_area(category)
         last: Exception = RuntimeError("No try-on backends available")
         for space, needs_area in _HF_SPACES:
-            # Skip spaces that don't support area param when non-upper-body is needed
-            if not needs_area and area != "upper_body":
-                logger.info("Skipping %s (no area support) for category=%s", space, category)
+            # yisol doesn't support "dresses" area — skip only for that
+            if not needs_area and area == "dresses":
+                logger.info("Skipping %s (no dresses area support)", space)
                 continue
             try:
                 return _run_hf_space(space, needs_area, person_image_bytes, clothing_image_url, garment_description, category)
