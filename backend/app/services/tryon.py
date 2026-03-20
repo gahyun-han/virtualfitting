@@ -58,18 +58,20 @@ def _run_fal_fashn(
             "model_image": person_url,
             "garment_image": clothing_image_url,
             "category": fashn_category,
-            "num_samples": 1,
-            "quality": "balanced",
         },
     )
 
-    output = result.get("images") or result.get("image")
-    if isinstance(output, list):
-        output_url: str = output[0]["url"] if isinstance(output[0], dict) else output[0]
+    logger.info("FASHN raw result keys: %s", list(result.keys()) if isinstance(result, dict) else type(result))
+    output = result.get("images") or result.get("image") or result.get("output")
+    if isinstance(output, list) and output:
+        first = output[0]
+        output_url: str = first["url"] if isinstance(first, dict) else str(first)
     elif isinstance(output, dict):
         output_url = output["url"]
+    elif isinstance(output, str):
+        output_url = output
     else:
-        output_url = str(output)
+        raise TryOnError(f"Unexpected FASHN response format: {result}")
 
     logger.info("fal.ai FASHN completed, downloading result …")
     with httpx.Client(timeout=60) as http:

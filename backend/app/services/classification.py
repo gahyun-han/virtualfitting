@@ -23,7 +23,7 @@ CATEGORY_PROMPTS: Dict[ClothingCategory, List[str]] = {
         "a photo of a blouse",
         "a photo of a sweater",
         "a photo of a t-shirt",
-        "a photo of a top",
+        "a photo of a top garment",
     ],
     ClothingCategory.bottom: [
         "a photo of pants",
@@ -33,9 +33,11 @@ CATEGORY_PROMPTS: Dict[ClothingCategory, List[str]] = {
         "a photo of trousers",
     ],
     ClothingCategory.dress: [
-        "a photo of a dress",
-        "a photo of a jumpsuit",
-        "a photo of a romper",
+        "a photo of a one-piece dress",
+        "a photo of a full-length one-piece garment",
+        "a photo of a jumpsuit one-piece",
+        "a photo of a romper one-piece",
+        "a photo of a maxi dress",
     ],
     ClothingCategory.shoes: [
         "a photo of shoes",
