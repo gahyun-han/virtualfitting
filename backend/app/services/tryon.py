@@ -116,20 +116,46 @@ def _run_hf_space(space: str, needs_area: bool, person_image_bytes: bytes, cloth
             return f.read()
 
 
+def _run_hf_spaces(
+    person_image_bytes: bytes,
+    clothing_image_url: str,
+    garment_description: str,
+    category: str,
+) -> bytes:
+    """Try all HF Spaces for a single pass."""
+    area = _category_to_area(category)
+    last: Exception = RuntimeError("No try-on backends available")
+    for space, needs_area in _HF_SPACES:
+        if not needs_area and area == "dresses":
+            logger.info("Skipping %s (no dresses area support)", space)
+            continue
+        try:
+            return _run_hf_space(space, needs_area, person_image_bytes, clothing_image_url, garment_description, category)
+        except Exception as exc:
+            logger.warning("Space %s failed: %s", space, exc)
+            last = exc
+    raise last
+
+
 async def run_tryon(
     person_image_bytes: bytes,
     clothing_image_url: str,
     garment_description: str,
     category: str = "top",
 ) -> bytes:
-    """Run IDM-VTON: fal.ai first, HuggingFace Spaces as fallback."""
+    """Run IDM-VTON: fal.ai first, HuggingFace Spaces as fallback.
+
+    fal.ai supports 'dresses' area natively (1 pass).
+    HF Space fallback uses 2-pass (upper + lower body) for dress category
+    since most Spaces don't reliably support the 'dresses' area.
+    """
     loop = asyncio.get_event_loop()
 
     def _run() -> bytes:
         from app.config import get_settings
         settings = get_settings()
 
-        # --- Primary: fal.ai ---
+        # --- Primary: fal.ai — supports "dresses" natively, always 1 pass ---
         if settings.FAL_KEY:
             os.environ["FAL_KEY"] = settings.FAL_KEY
             try:
@@ -138,19 +164,14 @@ async def run_tryon(
                 logger.warning("fal.ai failed, falling back to HF Spaces: %s", exc)
 
         # --- Fallback: HuggingFace Spaces ---
-        area = _category_to_area(category)
-        last: Exception = RuntimeError("No try-on backends available")
-        for space, needs_area in _HF_SPACES:
-            # yisol doesn't support "dresses" area — skip only for that
-            if not needs_area and area == "dresses":
-                logger.info("Skipping %s (no dresses area support)", space)
-                continue
-            try:
-                return _run_hf_space(space, needs_area, person_image_bytes, clothing_image_url, garment_description, category)
-            except Exception as exc:
-                logger.warning("Space %s failed: %s", space, exc)
-                last = exc
-        raise last
+        # Dress: 2-pass (upper_body then lower_body) because HF Spaces
+        # don't reliably support the "dresses" area parameter
+        if category == "dress":
+            logger.info("Dress on HF Space: running 2-pass (upper + lower body)")
+            result = _run_hf_spaces(person_image_bytes, clothing_image_url, garment_description, "top")
+            return _run_hf_spaces(result, clothing_image_url, garment_description, "bottom")
+
+        return _run_hf_spaces(person_image_bytes, clothing_image_url, garment_description, category)
 
     try:
         result_bytes: bytes = await loop.run_in_executor(None, _run)

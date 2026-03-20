@@ -157,30 +157,12 @@ async def _run_hf_job(
         _update_event(job_id, TryOnStatus.processing, step_msg)
         db.table(_TABLE).update({"status": TryOnStatus.processing.value}).eq("id", job_id).execute()
 
-        if clothing_category == "dress":
-            # Dress: two-pass strategy (upper_body then lower_body)
-            # avoids relying on unreliable "dresses" area support
-            _update_event(job_id, TryOnStatus.processing, "Running virtual try-on — dress upper body (1~2 min)…")
-            result_bytes = await run_tryon(
-                person_image_bytes=person_bytes,
-                clothing_image_url=clothing_url,
-                garment_description=garment_desc,
-                category="top",
-            )
-            _update_event(job_id, TryOnStatus.processing, "Running virtual try-on — dress lower body (1~2 min)…")
-            result_bytes = await run_tryon(
-                person_image_bytes=result_bytes,
-                clothing_image_url=clothing_url,
-                garment_description=garment_desc,
-                category="bottom",
-            )
-        else:
-            result_bytes = await run_tryon(
-                person_image_bytes=person_bytes,
-                clothing_image_url=clothing_url,
-                garment_description=garment_desc,
-                category=clothing_category,
-            )
+        result_bytes = await run_tryon(
+            person_image_bytes=person_bytes,
+            clothing_image_url=clothing_url,
+            garment_description=garment_desc,
+            category=clothing_category,
+        )
 
         # Second pass: apply separate bottom garment
         if has_bottom:
