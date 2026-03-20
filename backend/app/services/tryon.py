@@ -21,10 +21,20 @@ _HF_SPACES = [
 ]
 
 
+def _category_to_area(category: str) -> str:
+    """Map clothing category to IDM-VTON area string."""
+    if category in ("bottom",):
+        return "lower_body"
+    if category in ("dress",):
+        return "dresses"
+    return "upper_body"
+
+
 def _run_fal(
     person_image_bytes: bytes,
     clothing_image_url: str,
     garment_description: str,
+    category: str = "top",
 ) -> bytes:
     """Run IDM-VTON via fal.ai (primary)."""
     import fal_client  # type: ignore[import]
@@ -32,13 +42,15 @@ def _run_fal(
     logger.info("Uploading person image to fal.ai storage …")
     person_url = fal_client.upload(person_image_bytes, "image/jpeg")
 
-    logger.info("Calling fal-ai/idm-vton …")
+    area = _category_to_area(category)
+    logger.info("Calling fal-ai/idm-vton (area=%s) …", area)
     result = fal_client.subscribe(
         "fal-ai/idm-vton",
         arguments={
             "human_image_url": person_url,
             "garment_image_url": clothing_image_url,
             "description": garment_description,
+            "category": area,
             "num_inference_steps": 30,
             "seed": 42,
         },
@@ -52,7 +64,7 @@ def _run_fal(
         return r.content
 
 
-def _run_hf_space(space: str, needs_area: bool, person_image_bytes: bytes, clothing_image_url: str, garment_description: str) -> bytes:
+def _run_hf_space(space: str, needs_area: bool, person_image_bytes: bytes, clothing_image_url: str, garment_description: str, category: str = "top") -> bytes:
     """Run IDM-VTON via a HuggingFace Gradio Space (fallback)."""
     from gradio_client import Client, handle_file  # type: ignore[import]
 
@@ -93,7 +105,7 @@ def _run_hf_space(space: str, needs_area: bool, person_image_bytes: bytes, cloth
             api_name="/tryon",
         )
         if needs_area:
-            kwargs["area"] = "upper_body"
+            kwargs["area"] = _category_to_area(category)
 
         result = client.predict(**kwargs)
 
@@ -106,6 +118,7 @@ async def run_tryon(
     person_image_bytes: bytes,
     clothing_image_url: str,
     garment_description: str,
+    category: str = "top",
 ) -> bytes:
     """Run IDM-VTON: fal.ai first, HuggingFace Spaces as fallback."""
     loop = asyncio.get_event_loop()
@@ -118,7 +131,7 @@ async def run_tryon(
         if settings.FAL_KEY:
             os.environ["FAL_KEY"] = settings.FAL_KEY
             try:
-                return _run_fal(person_image_bytes, clothing_image_url, garment_description)
+                return _run_fal(person_image_bytes, clothing_image_url, garment_description, category)
             except Exception as exc:
                 logger.warning("fal.ai failed, falling back to HF Spaces: %s", exc)
 
@@ -126,7 +139,7 @@ async def run_tryon(
         last: Exception = RuntimeError("No try-on backends available")
         for space, needs_area in _HF_SPACES:
             try:
-                return _run_hf_space(space, needs_area, person_image_bytes, clothing_image_url, garment_description)
+                return _run_hf_space(space, needs_area, person_image_bytes, clothing_image_url, garment_description, category)
             except Exception as exc:
                 logger.warning("Space %s failed: %s", space, exc)
                 last = exc

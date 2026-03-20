@@ -134,8 +134,10 @@ async def _run_hf_job(
     clothing_url: str,
     garment_desc: str,
     user_id: str,
+    clothing_category: str = "top",
     bottom_clothing_url: str = "",
     bottom_garment_desc: str = "",
+    bottom_clothing_category: str = "bottom",
 ) -> None:
     """Run IDM-VTON via HuggingFace Space and persist the result."""
     db = _get_db()
@@ -151,6 +153,7 @@ async def _run_hf_job(
             person_image_bytes=person_bytes,
             clothing_image_url=clothing_url,
             garment_description=garment_desc,
+            category=clothing_category,
         )
 
         # Second pass: apply bottom garment onto the first result
@@ -160,6 +163,7 @@ async def _run_hf_job(
                 person_image_bytes=result_bytes,
                 clothing_image_url=bottom_clothing_url,
                 garment_description=bottom_garment_desc,
+                category=bottom_clothing_category,
             )
 
         stored_url = await storage.upload(
@@ -218,7 +222,7 @@ async def start_tryon(
     try:
         wardrobe_resp = (
             db.table(_WARDROBE_TABLE)
-            .select("segmented_url, original_url, attributes, name")
+            .select("segmented_url, original_url, attributes, name, category")
             .eq("id", str(payload.wardrobe_item_id))
             .eq("user_id", current_user.id)
             .maybe_single()
@@ -231,6 +235,7 @@ async def start_tryon(
         raise NotFoundError(f"Wardrobe item {payload.wardrobe_item_id} not found.")
 
     clothing_url: str = wardrobe_resp.data.get("segmented_url") or wardrobe_resp.data.get("original_url", "")
+    clothing_category: str = wardrobe_resp.data.get("category") or "top"
     clip_attrs = wardrobe_resp.data.get("attributes") or {}
     garment_desc = (
         f"{clip_attrs.get('style', '')} {clip_attrs.get('color', '')} "
@@ -242,11 +247,12 @@ async def start_tryon(
     # ---- Optional: bottom garment ----------------------------------------
     bottom_clothing_url = ""
     bottom_garment_desc = ""
+    bottom_clothing_category = "bottom"
     if payload.bottom_wardrobe_item_id:
         try:
             bottom_resp = (
                 db.table(_WARDROBE_TABLE)
-                .select("segmented_url, original_url, attributes, name")
+                .select("segmented_url, original_url, attributes, name, category")
                 .eq("id", str(payload.bottom_wardrobe_item_id))
                 .eq("user_id", current_user.id)
                 .maybe_single()
@@ -254,6 +260,7 @@ async def start_tryon(
             )
             if bottom_resp.data:
                 bottom_clothing_url = bottom_resp.data.get("segmented_url") or bottom_resp.data.get("original_url", "")
+                bottom_clothing_category = bottom_resp.data.get("category") or "bottom"
                 bottom_attrs = bottom_resp.data.get("attributes") or {}
                 bottom_garment_desc = (
                     f"{bottom_attrs.get('style', '')} {bottom_attrs.get('color', '')} "
@@ -277,7 +284,7 @@ async def start_tryon(
     _update_event(job_id, TryOnStatus.pending, "Job queued.")
     background_tasks.add_task(
         _run_hf_job, job_id, person_bytes, clothing_url, garment_desc, current_user.id,
-        bottom_clothing_url, bottom_garment_desc,
+        clothing_category, bottom_clothing_url, bottom_garment_desc, bottom_clothing_category,
     )
 
     return {"id": job_id, "status": TryOnStatus.pending.value}
