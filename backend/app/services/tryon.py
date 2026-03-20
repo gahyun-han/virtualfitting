@@ -20,51 +20,103 @@ _HF_SPACES = [
     ("alf0nso/IDM-VTON-demo2", True),
 ]
 
+# fal.ai FASHN category values (supports full-body for dress)
+_FASHN_CATEGORY: Dict[str, str] = {
+    "top": "upper-body",
+    "outerwear": "upper-body",
+    "bottom": "lower-body",
+    "dress": "full-body",
+}
+
 
 def _category_to_area(category: str) -> str:
     """Map clothing category to IDM-VTON area string."""
-    if category in ("bottom",):
+    if category == "bottom":
         return "lower_body"
-    if category in ("dress",):
+    if category == "dress":
         return "dresses"
     return "upper_body"
 
 
-def _run_fal(
+def _run_fal_fashn(
     person_image_bytes: bytes,
     clothing_image_url: str,
     garment_description: str,
-    category: str = "top",
+    category: str,
 ) -> bytes:
-    """Run IDM-VTON via fal.ai (primary)."""
+    """Run FASHN v1.5 via fal.ai — supports upper/lower/full-body categories."""
     import fal_client  # type: ignore[import]
 
-    logger.info("Uploading person image to fal.ai storage …")
+    fashn_category = _FASHN_CATEGORY.get(category, "upper-body")
+    logger.info("Uploading person image to fal.ai storage (FASHN) …")
     person_url = fal_client.upload(person_image_bytes, "image/jpeg")
 
-    area = _category_to_area(category)
-    logger.info("Calling fal-ai/idm-vton (area=%s) …", area)
+    logger.info("Calling fal-ai/fashn/tryon/v1.5 (category=%s) …", fashn_category)
     result = fal_client.subscribe(
-        "fal-ai/idm-vton",
+        "fal-ai/fashn/tryon/v1.5",
         arguments={
-            "human_image_url": person_url,
-            "garment_image_url": clothing_image_url,
-            "description": garment_description,
-            "category": area,
-            "num_inference_steps": 30,
-            "seed": 42,
+            "model_image": person_url,
+            "garment_image": clothing_image_url,
+            "category": fashn_category,
+            "num_samples": 1,
+            "quality": "balanced",
         },
     )
 
-    output_url: str = result["image"]["url"]
-    logger.info("fal.ai try-on completed, downloading result …")
+    output = result.get("images") or result.get("image")
+    if isinstance(output, list):
+        output_url: str = output[0]["url"] if isinstance(output[0], dict) else output[0]
+    elif isinstance(output, dict):
+        output_url = output["url"]
+    else:
+        output_url = str(output)
+
+    logger.info("fal.ai FASHN completed, downloading result …")
     with httpx.Client(timeout=60) as http:
         r = http.get(output_url)
         r.raise_for_status()
         return r.content
 
 
-def _run_hf_space(space: str, needs_area: bool, person_image_bytes: bytes, clothing_image_url: str, garment_description: str, category: str = "top") -> bytes:
+def _run_fal_idmvton(
+    person_image_bytes: bytes,
+    clothing_image_url: str,
+    garment_description: str,
+) -> bytes:
+    """Run IDM-VTON via fal.ai — upper body only, but free."""
+    import fal_client  # type: ignore[import]
+
+    logger.info("Uploading person image to fal.ai storage (IDM-VTON) …")
+    person_url = fal_client.upload(person_image_bytes, "image/jpeg")
+
+    logger.info("Calling fal-ai/idm-vton …")
+    result = fal_client.subscribe(
+        "fal-ai/idm-vton",
+        arguments={
+            "human_image_url": person_url,
+            "garment_image_url": clothing_image_url,
+            "description": garment_description,
+            "num_inference_steps": 30,
+            "seed": 42,
+        },
+    )
+
+    output_url: str = result["image"]["url"]
+    logger.info("fal.ai IDM-VTON completed, downloading result …")
+    with httpx.Client(timeout=60) as http:
+        r = http.get(output_url)
+        r.raise_for_status()
+        return r.content
+
+
+def _run_hf_space(
+    space: str,
+    needs_area: bool,
+    person_image_bytes: bytes,
+    clothing_image_url: str,
+    garment_description: str,
+    category: str = "top",
+) -> bytes:
     """Run IDM-VTON via a HuggingFace Gradio Space (fallback)."""
     from gradio_client import Client, handle_file  # type: ignore[import]
 
@@ -105,7 +157,6 @@ def _run_hf_space(space: str, needs_area: bool, person_image_bytes: bytes, cloth
             api_name="/tryon",
         )
         area = _category_to_area(category)
-        # Always pass area for non-upper-body; also pass when space requires it
         if needs_area or area != "upper_body":
             kwargs["area"] = area
 
@@ -143,11 +194,15 @@ async def run_tryon(
     garment_description: str,
     category: str = "top",
 ) -> bytes:
-    """Run IDM-VTON: fal.ai first, HuggingFace Spaces as fallback.
+    """Run virtual try-on.
 
-    fal.ai supports 'dresses' area natively (1 pass).
-    HF Space fallback uses 2-pass (upper + lower body) for dress category
-    since most Spaces don't reliably support the 'dresses' area.
+    fal.ai path:
+    - dress / bottom: FASHN v1.5 (supports full-body / lower-body, $0.075/image)
+    - top / outerwear: IDM-VTON (upper-body only, free)
+
+    HF Space fallback:
+    - dress: 2-pass (upper_body then lower_body via yisol)
+    - others: single pass
     """
     loop = asyncio.get_event_loop()
 
@@ -155,17 +210,23 @@ async def run_tryon(
         from app.config import get_settings
         settings = get_settings()
 
-        # --- Primary: fal.ai — supports "dresses" natively, always 1 pass ---
         if settings.FAL_KEY:
             os.environ["FAL_KEY"] = settings.FAL_KEY
             try:
-                return _run_fal(person_image_bytes, clothing_image_url, garment_description, category)
+                # dress / bottom need FASHN (supports category selection)
+                if category in ("dress", "bottom"):
+                    return _run_fal_fashn(
+                        person_image_bytes, clothing_image_url, garment_description, category
+                    )
+                # top / outerwear: IDM-VTON is free and works fine
+                return _run_fal_idmvton(
+                    person_image_bytes, clothing_image_url, garment_description
+                )
             except Exception as exc:
                 logger.warning("fal.ai failed, falling back to HF Spaces: %s", exc)
 
-        # --- Fallback: HuggingFace Spaces ---
-        # Dress: 2-pass (upper_body then lower_body) because HF Spaces
-        # don't reliably support the "dresses" area parameter
+        # --- HF Space fallback ---
+        # Dress: 2-pass since HF Spaces don't reliably support "dresses" area
         if category == "dress":
             logger.info("Dress on HF Space: running 2-pass (upper + lower body)")
             result = _run_hf_spaces(person_image_bytes, clothing_image_url, garment_description, "top")
