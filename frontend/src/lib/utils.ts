@@ -28,14 +28,14 @@ export function categoryLabel(category: string): string {
 
 export function categoryColor(category: string): string {
   const map: Record<string, string> = {
-    top: 'bg-blue-900 text-blue-200',
-    bottom: 'bg-purple-900 text-purple-200',
-    dress: 'bg-pink-900 text-pink-200',
-    shoes: 'bg-amber-900 text-amber-200',
-    outerwear: 'bg-green-900 text-green-200',
-    accessory: 'bg-red-900 text-red-200',
+    top: 'bg-blue-500 text-white',
+    bottom: 'bg-violet-500 text-white',
+    dress: 'bg-pink-500 text-white',
+    shoes: 'bg-amber-500 text-white',
+    outerwear: 'bg-emerald-500 text-white',
+    accessory: 'bg-red-500 text-white',
   }
-  return map[category] ?? 'bg-zinc-800 text-zinc-200'
+  return map[category] ?? 'bg-zinc-500 text-white'
 }
 
 export function dataURLtoFile(dataURL: string, filename: string): File {
